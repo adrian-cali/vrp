@@ -411,6 +411,7 @@
         // FM data from template
         const fmData = {{ fm_summaries | tojson }};
         const jobId = "{{ job_id }}";
+        const osrmUrl = "{{ osrm_url }}";
         
         // Tab switching
         function switchTab(tabName) {
@@ -456,6 +457,18 @@
             loadAndRenderAssignments();
         }
         
+        async function fetchOsrmRoute(latLngPath) {
+            // Convert [[lat, lng], ...] to OSRM lon,lat string
+            if (!latLngPath || latLngPath.length < 2) return null;
+            const coordStr = latLngPath.map(([lat, lng]) => `${lng},${lat}`).join(';');
+            const url = `${osrmUrl}/route/v1/driving/${coordStr}?overview=full&alternatives=false&steps=false&annotations=distance,duration&geometries=geojson`;
+            const resp = await fetch(url);
+            if (!resp.ok) throw new Error(`OSRM route error ${resp.status}`);
+            const data = await resp.json();
+            if (data.code !== 'Ok' || !data.routes || !data.routes[0]) throw new Error('OSRM returned no route');
+            return data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+        }
+
         async function loadAndRenderAssignments() {
             try {
                 console.log('=== START LOADING ASSIGNMENTS ===');
@@ -498,7 +511,8 @@
                 let totalTaskMarkersRendered = 0;
                 let totalFMMarkersRendered = 0;
                 
-                fmData.forEach((fm, index) => {
+                for (let index = 0; index < fmData.length; index++) {
+                    const fm = fmData[index];
                     console.log(`\n--- Processing FM ${index + 1}/${fmData.length}: ${fm.fm_name} ---`);
                     console.log('FM ID:', fm.fm_id);
                     console.log('FM Tasks:', fm.task_count);
@@ -588,17 +602,26 @@
                     
                     console.log(`✅ Tasks with coords: ${tasksWithCoords}, Missing coords: ${tasksMissingCoords}`);
                     
-                    // Draw complete route path
+                    // Draw complete route path using OSRM geometry when available
                     if (routePath.length > 1) {
-                        const route = L.polyline(routePath, {
+                        let geometry = null;
+                        try {
+                            geometry = await fetchOsrmRoute(routePath);
+                            console.log('✅ OSRM geometry retrieved');
+                        } catch (err) {
+                            console.warn('⚠️ OSRM geometry failed, falling back to straight lines:', err.message);
+                        }
+
+                        const polylineCoords = geometry || routePath;
+                        const route = L.polyline(polylineCoords, {
                             color: color,
                             weight: 3,
                             opacity: 0.7,
-                            dashArray: '10, 5'
+                            dashArray: geometry ? null : '10, 5'
                         });
                         routeLayers.addLayer(route);
                         totalRoutesRendered++;
-                        console.log(`✅ Added route with ${routePath.length} waypoints`);
+                        console.log(`✅ Added route with ${polylineCoords.length} points (geometry: ${!!geometry})`);
                         
                         // Add arrow decorators to show direction (optional, only if decorator available)
                         if (typeof L.polylineDecorator !== 'undefined') {
@@ -625,7 +648,7 @@
                     } else {
                         console.warn(`❌ No route path for ${fm.fm_name} (only ${routePath.length} points)`);
                     }
-                });
+                }
                 
                 console.log('\n=== RENDERING SUMMARY ===');
                 console.log(`✅ FM Markers: ${totalFMMarkersRendered}`);

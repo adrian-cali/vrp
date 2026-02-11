@@ -1,5 +1,5 @@
 cliArgs:
-  geometry: false # retrieve geometry (-g)
+  geometry: true # retrieve geometry (-g)
   planmode: false # run vroom in plan mode (-c) if set to true
   threads: 4 # number of threads to use (-t)
   explore: 5 # exploration level to use (0..5) (-x)
@@ -11,20 +11,20 @@ cliArgs:
   override: true # allow cli options override (-c, -g, -t and -x)
   path: '' # VROOM path (if not in $PATH)
   port: 3000 # expressjs port
-  router: '' # empty = use straight-line distances (no routing backend)
+  router: 'osrm' # use remote OSRM backend instead of straight-line
   timeout: 300000 # milli-seconds
   baseurl: '/' #base url for api
 routingServers:
   osrm:
     car:
-      host: 'osrm'
-      port: '5000'
+      host: 'router.project-osrm.org'
+      port: '80'
     bike:
-      host: 'osrm'
-      port: '5000'
+      host: 'router.project-osrm.org'
+      port: '80'
     foot:
-      host: 'osrm'
-      port: '5000'
+      host: 'router.project-osrm.org'
+      port: '80'
   ors:
     driving-car:
       host: '0.0.0.0/ors/v2'

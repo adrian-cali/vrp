@@ -8,6 +8,7 @@ from app.database import get_db
 from app.dependencies import get_current_user_id, verify_user_exists
 from app.services.db_service import db_service
 from app.models import User
+from app.config import settings
 from collections import defaultdict
 
 router = APIRouter(prefix="/api/v1/vrp", tags=["VRP Preview"])
@@ -78,6 +79,7 @@ async def preview_vrp_job(
             "job_status": job.status,
             "fm_summaries": fm_summaries,
             "total_fms": len(fm_summaries),
-            "total_tasks": len(assignments)
+            "total_tasks": len(assignments),
+            "osrm_url": settings.osrm_url
         }
     )
