@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VRP Job Preview - {{ job_id }}</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet-polylinedecorator@1.6.0/dist/leaflet.polylineDecorator.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .header h1 {
+            margin: 0 0 10px 0;
+            font-size: 28px;
+        }
+        .header-info {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 14px;
+        }
+        .header-info span {
+            background: rgba(255,255,255,0.2);
+            padding: 5px 12px;
+            border-radius: 15px;
+        }
+        
+        .tabs {
+            background: white;
+            display: flex;
+            gap: 0;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .tab-button {
+            flex: 1;
+            padding: 15px 20px;
+            border: none;
+            background: white;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 500;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .tab-button:hover {
+            background: #f5f5f5;
+            color: #333;
+        }
+        .tab-button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+            font-weight: bold;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        
+        .summary {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px;
+            background: white;
+        }
+        .summary-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            color: white;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        .summary-card h3 {
+            margin: 0 0 10px 0;
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        .summary-card p {
+            margin: 0;
+            font-size: 32px;
+            font-weight: bold;
+        }
+        
+        /* Map View Styles */
+        #map-view {
+            position: relative;
+        }
+        #map {
+            height: calc(100vh - 220px);
+            width: 100%;
+        }
+        .map-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        .map-controls label {
+            display: block;
+            margin: 5px 0;
+            font-size: 12px;
+        }
+        .map-legend {
+            position: absolute;
+            bottom: 20px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            font-size: 12px;
+        }
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 5px 0;
+        }
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+        }
+        
+        /* Table View Styles */
+        #table-view {
+            padding: 20px;
+        }
+        .fm-section {
+            margin: 20px 0;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            background: white;
+        }
+        .fm-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        .fm-stats {
+            background: #f5f5f5;
+            padding: 15px;
+            display: flex;
+            gap: 30px;
+            flex-wrap: wrap;
+        }
+        .stat {
+            display: flex;
+            flex-direction: column;
+        }
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 3px;
+        }
+        .stat-value {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+        th {
+            background-color: #f9f9f9;
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+        tr:hover {
+            background-color: #fafafa;
+        }
+        .priority-high {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .priority-medium {
+            color: #f57c00;
+        }
+        .priority-low {
+            color: #388e3c;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 5px 12px;
+            border-radius: 15px;
+            font-size: 11px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-ready {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .status-finalized {
+            background-color: #2196F3;
+            color: white;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🗺️ VRP Job Preview</h1>
+        <div class="header-info">
+            <span><strong>Job ID:</strong> {{ job_id[:13] }}...</span>
+            <span><strong>Status:</strong> {{ job_status }}</span>
+            <span><strong>FMs:</strong> {{ total_fms }}</span>
+            <span><strong>Tasks:</strong> {{ total_tasks }}</span>
+        </div>
+    </div>
+    
+    <div class="tabs">
+        <button class="tab-button active" onclick="switchTab('map')">📍 Map View</button>
+        <button class="tab-button" onclick="switchTab('table')">📊 Table View</button>
+        <button class="tab-button" onclick="switchTab('stats')">📈 Statistics</button>
+    </div>
+    
+    <!-- Map View Tab -->
+    <div id="map-view" class="tab-content active">
+        <div id="map"></div>
+        <div class="map-controls">
+            <label>
+                <input type="checkbox" id="show-routes" checked onchange="toggleRoutes()">
+                Show Routes
+            </label>
+            <label>
+                <input type="checkbox" id="show-fm-markers" checked onchange="toggleFMMarkers()">
+                Show FM Locations
+            </label>
+            <label>
+                <input type="checkbox" id="show-task-markers" checked onchange="toggleTaskMarkers()">
+                Show Task Markers
+            </label>
+        </div>
+        <div class="map-legend">
+            <h4 style="margin: 0 0 10px 0;">Legend</h4>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #2196F3; border-radius: 50%;"></div>
+                <span>FM Home Location</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #f44336;"></div>
+                <span>High Priority Task (1-33)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #ff9800;"></div>
+                <span>Medium Priority (34-66)</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #4caf50;"></div>
+                <span>Low Priority (67-100)</span>
+            </div>
+            <div class="legend-item">
+                <div style="width: 20px; height: 2px; background: blue;"></div>
+                <span>Assignment Route</span>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Table View Tab -->
+    <div id="table-view" class="tab-content">
+        {% for fm in fm_summaries %}
+        <div class="fm-section">
+            <div class="fm-header">
+                👤 {{ fm.fm_name }} <small>(FM ID: {{ fm.fm_id[:8] }}...)</small>
+            </div>
+            <div class="fm-stats">
+                <div class="stat">
+                    <span class="stat-label">📦 Tasks</span>
+                    <span class="stat-value">{{ fm.task_count }}</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📏 Total Distance</span>
+                    <span class="stat-value">{{ fm.total_distance_km }} km</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">⏱️ Est. Time</span>
+                    <span class="stat-value">{{ fm.total_time_hours }} hrs</span>
+                </div>
+                <div class="stat">
+                    <span class="stat-label">📊 Avg Distance/Task</span>
+                    <span class="stat-value">{{ "%.2f"|format(fm.total_distance_km / fm.task_count if fm.task_count > 0 else 0) }} km</span>
+                </div>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Task ID</th>
+                        <th>Address</th>
+                        <th>Priority</th>
+                        <th>ETA (min)</th>
+                        <th>Distance (km)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for task in fm.tasks %}
+                    <tr>
+                        <td><strong>{{ task.sequence_no }}</strong></td>
+                        <td><code style="font-size: 11px;">{{ task.task_id[:13] }}...</code></td>
+                        <td>{{ task.address }}</td>
+                        <td>
+                            {% if task.priority <= 33 %}
+                            <span class="priority-high">🔴 {{ task.priority }}</span>
+                            {% elif task.priority <= 66 %}
+                            <span class="priority-medium">🟠 {{ task.priority }}</span>
+                            {% else %}
+                            <span class="priority-low">🟢 {{ task.priority }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ "%.0f"|format(task.eta_seconds / 60 if task.eta_seconds else 0) }}</td>
+                        <td>{{ "%.2f"|format(task.distance_meters / 1000 if task.distance_meters else 0) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+    </div>
+    
+    <!-- Statistics Tab -->
+    <div id="stats-view" class="tab-content">
+        <div class="summary">
+            <div class="summary-card">
+                <h3>Total Field Managers</h3>
+                <p>{{ total_fms }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Total Tasks</h3>
+                <p>{{ total_tasks }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Avg Tasks per FM</h3>
+                <p>{{ "%.1f"|format(total_tasks / total_fms if total_fms > 0 else 0) }}</p>
+            </div>
+            <div class="summary-card">
+                <h3>Total Distance</h3>
+                <p>{{ "%.0f"|format(fm_summaries | sum(attribute='total_distance_km')) }} km</p>
+            </div>
+        </div>
+        
+        <div style="padding: 20px;">
+            <h2 style="margin-bottom: 20px;">FM Performance</h2>
+            <table style="background: white;">
+                <thead>
+                    <tr>
+                        <th>FM Name</th>
+                        <th>Tasks</th>
+                        <th>Distance (km)</th>
+                        <th>Time (hrs)</th>
+                        <th>Utilization</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for fm in fm_summaries | sort(attribute='task_count', reverse=True) %}
+                    <tr>
+                        <td>{{ fm.fm_name }}</td>
+                        <td><strong>{{ fm.task_count }}</strong></td>
+                        <td>{{ fm.total_distance_km }}</td>
+                        <td>{{ fm.total_time_hours }}</td>
+                        <td>
+                            <div style="background: #e0e0e0; height: 20px; border-radius: 10px; overflow: hidden;">
+                                <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); height: 100%; width: {{ (fm.task_count / 100 * 100)|int }}%;">
+                                </div>
+                            </div>
+                            <small>{{ fm.task_count }}/100 ({{ (fm.task_count / 100 * 100)|int }}%)</small>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // FM data from template
+        const fmData = {{ fm_summaries | tojson }};
+        const jobId = "{{ job_id }}";
+        
+        // Tab switching
+        function switchTab(tabName) {
+            // Update buttons
+            document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            // Update content
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            if (tabName === 'map') {
+                document.getElementById('map-view').classList.add('active');
+                initializeMap();  // Reinitialize map when switching to it
+            } else if (tabName === 'table') {
+                document.getElementById('table-view').classList.add('active');
+            } else if (tabName === 'stats') {
+                document.getElementById('stats-view').classList.add('active');
+            }
+        }
+        
+        // Map variables
+        let map = null;
+        let routeLayers = L.layerGroup();
+        let fmMarkerLayers = L.layerGroup();
+        let taskMarkerLayers = L.layerGroup();
+        
+        // Initialize map
+        function initializeMap() {
+            if (map) return;  // Already initialized
+            
+            // Create map
+            map = L.map('map').setView([12.8797, 121.7740], 6);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+            
+            // Add layers
+            routeLayers.addTo(map);
+            fmMarkerLayers.addTo(map);
+            taskMarkerLayers.addTo(map);
+            
+            // Load FM locations and render assignments
+            loadAndRenderAssignments();
+        }
+        
+        async function loadAndRenderAssignments() {
+            try {
+                console.log('=== START LOADING ASSIGNMENTS ===');
+                console.log('FM Data:', fmData);
+                console.log('Number of FMs:', fmData.length);
+                
+                // Fetch FM home locations
+                const fmResponse = await fetch('/fm_home_locations');
+                if (!fmResponse.ok) {
+                    console.error('FM locations fetch failed:', fmResponse.status);
+                    return;
+                }
+                const fmLocations = await fmResponse.json();
+                console.log(`✅ Got ${fmLocations.length} FM locations`);
+                
+                // Create FM location map
+                const fmLocationMap = {};
+                fmLocations.forEach(fm => {
+                    fmLocationMap[fm.user_id] = [fm.home_lat, fm.home_long];
+                });
+                
+                // Fetch ALL tasks for lat/lng (increase limit to catch all)
+                const tasksResponse = await fetch('/tasks?limit=10000');
+                if (!tasksResponse.ok) {
+                    console.error('Tasks fetch failed:', tasksResponse.status);
+                    return;
+                }
+                const tasks = await tasksResponse.json();
+                console.log(`✅ Got ${tasks.length} tasks`);
+                
+                const taskMap = {};
+                tasks.forEach(task => {
+                    taskMap[task.id] = task;
+                });
+                console.log(`✅ Created taskMap with ${Object.keys(taskMap).length} entries`);
+                
+                // Render each FM's assignments
+                const fmColors = generateColors(fmData.length);
+                let totalRoutesRendered = 0;
+                let totalTaskMarkersRendered = 0;
+                let totalFMMarkersRendered = 0;
+                
+                fmData.forEach((fm, index) => {
+                    console.log(`\n--- Processing FM ${index + 1}/${fmData.length}: ${fm.fm_name} ---`);
+                    console.log('FM ID:', fm.fm_id);
+                    console.log('FM Tasks:', fm.task_count);
+                    
+                    const fmLocation = fmLocationMap[fm.fm_id];
+                    if (!fmLocation) {
+                        console.warn(`❌ No location for FM: ${fm.fm_id} (${fm.fm_name})`);
+                        return;
+                    }
+                    
+                    console.log(`✅ FM Location: [${fmLocation[0]}, ${fmLocation[1]}]`);
+                    const color = fmColors[index];
+                    
+                    // Add FM home marker
+                    const fmMarker = L.circleMarker(fmLocation, {
+                        radius: 10,
+                        fillColor: '#2196F3',
+                        color: '#fff',
+                        weight: 2,
+                        fillOpacity: 1
+                    }).bindPopup(`
+                        <strong>🏠 FM: ${fm.fm_name}</strong><br>
+                        Tasks: ${fm.task_count}<br>
+                        Distance: ${fm.total_distance_km} km<br>
+                        Time: ${fm.total_time_hours} hrs
+                    `);
+                    fmMarkerLayers.addLayer(fmMarker);
+                    totalFMMarkersRendered++;
+                    
+                    // Sort tasks by sequence
+                    const sortedTasks = [...fm.tasks].sort((a, b) => a.sequence_no - b.sequence_no);
+                    console.log(`Processing ${sortedTasks.length} tasks for ${fm.fm_name}`);
+                    
+                    // Build route path: FM home → Task 1 → Task 2 → ... → Task N
+                    const routePath = [fmLocation];
+                    let tasksWithCoords = 0;
+                    let tasksMissingCoords = 0;
+                    
+                    sortedTasks.forEach((task, taskIndex) => {
+                        const taskData = taskMap[task.task_id];
+                        if (!taskData) {
+                            console.warn(`❌ No coordinates for task ${task.sequence_no}: ${task.task_id}`);
+                            tasksMissingCoords++;
+                            return;
+                        }
+                        
+                        tasksWithCoords++;
+                        const taskLocation = [taskData.latitude, taskData.longitude];
+                        routePath.push(taskLocation);
+                        
+                        // Task marker with sequence number
+                        const taskColor = getPriorityColor(task.priority);
+                        const divIcon = L.divIcon({
+                            className: 'custom-marker',
+                            html: `
+                                <div style="
+                                    background: ${taskColor};
+                                    color: white;
+                                    width: 30px;
+                                    height: 30px;
+                                    border-radius: 50%;
+                                    border: 2px solid white;
+                                    display: flex;
+                                    align-items: center;
+                                    justify-content: center;
+                                    font-weight: bold;
+                                    font-size: 12px;
+                                    box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+                                ">
+                                    ${task.sequence_no}
+                                </div>
+                            `,
+                            iconSize: [30, 30],
+                            iconAnchor: [15, 15]
+                        });
+                        
+                        const taskMarker = L.marker(taskLocation, { icon: divIcon }).bindPopup(`
+                            <strong>📦 Task #${task.sequence_no}</strong><br>
+                            <small>Priority: ${task.priority.toFixed(1)}</small><br>
+                            Distance: ${(task.distance_meters / 1000).toFixed(2)} km<br>
+                            ETA: ${Math.round(task.eta_seconds / 60)} min<br>
+                            <small>📌 FM: ${fm.fm_name}</small>
+                        `);
+                        taskMarkerLayers.addLayer(taskMarker);
+                        totalTaskMarkersRendered++;
+                    });
+                    
+                    console.log(`✅ Tasks with coords: ${tasksWithCoords}, Missing coords: ${tasksMissingCoords}`);
+                    
+                    // Draw complete route path
+                    if (routePath.length > 1) {
+                        const route = L.polyline(routePath, {
+                            color: color,
+                            weight: 3,
+                            opacity: 0.7,
+                            dashArray: '10, 5'
+                        });
+                        routeLayers.addLayer(route);
+                        totalRoutesRendered++;
+                        console.log(`✅ Added route with ${routePath.length} waypoints`);
+                        
+                        // Add arrow decorators to show direction (optional, only if decorator available)
+                        if (typeof L.polylineDecorator !== 'undefined') {
+                            const decorator = L.polylineDecorator(route, {
+                                patterns: [
+                                    {
+                                        offset: '20%',
+                                        repeat: 100,
+                                        symbol: L.Symbol.arrowHead({
+                                            pixelSize: 8,
+                                            polygon: false,
+                                            pathOptions: { 
+                                                stroke: true,
+                                                weight: 2,
+                                                color: color,
+                                                opacity: 0.7
+                                            }
+                                        })
+                                    }
+                                ]
+                            });
+                            routeLayers.addLayer(decorator);
+                        }
+                    } else {
+                        console.warn(`❌ No route path for ${fm.fm_name} (only ${routePath.length} points)`);
+                    }
+                });
+                
+                console.log('\n=== RENDERING SUMMARY ===');
+                console.log(`✅ FM Markers: ${totalFMMarkersRendered}`);
+                console.log(`✅ Task Markers: ${totalTaskMarkersRendered}`);
+                console.log(`✅ Routes: ${totalRoutesRendered}`);
+                
+                // Fit map to show all markers
+                const allMarkers = [];
+                fmMarkerLayers.eachLayer(layer => allMarkers.push(layer.getLatLng()));
+                taskMarkerLayers.eachLayer(layer => allMarkers.push(layer.getLatLng()));
+                console.log(`Total markers for map bounds: ${allMarkers.length}`);
+                
+                if (allMarkers.length > 0) {
+                    const bounds = L.latLngBounds(allMarkers);
+                    map.fitBounds(bounds, { padding: [50, 50] });
+                    console.log('✅ Map fitted to bounds');
+                } else {
+                    console.warn('❌ No markers to fit!');
+                }
+                
+                console.log('=== END LOADING ASSIGNMENTS ===\n');
+                
+            } catch (error) {
+                console.error('❌ Fatal error loading assignment data:', error);
+                console.error('Stack trace:', error.stack);
+            }
+        }
+        
+        function getPriorityColor(priority) {
+            if (priority <= 33) return '#f44336';  // Red
+            if (priority <= 66) return '#ff9800';  // Orange
+            return '#4caf50';  // Green
+        }
+        
+        function generateColors(count) {
+            const colors = [];
+            for (let i = 0; i < count; i++) {
+                const hue = (i * 360 / count) % 360;
+                colors.push(`hsl(${hue}, 70%, 50%)`);
+            }
+            return colors;
+        }
+        
+        function toggleRoutes() {
+            if (document.getElementById('show-routes').checked) {
+                map.addLayer(routeLayers);
+            } else {
+                map.removeLayer(routeLayers);
+            }
+        }
+        
+        function toggleFMMarkers() {
+            if (document.getElementById('show-fm-markers').checked) {
+                map.addLayer(fmMarkerLayers);
+            } else {
+                map.removeLayer(fmMarkerLayers);
+            }
+        }
+        
+        function toggleTaskMarkers() {
+            if (document.getElementById('show-task-markers').checked) {
+                map.addLayer(taskMarkerLayers);
+            } else {
+                map.removeLayer(taskMarkerLayers);
+            }
+        }
+        
+        // Initialize map on load
+        setTimeout(initializeMap, 100);
+    </script>

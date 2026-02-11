@@ -1,0 +1,95 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: vrp_user
+      POSTGRES_PASSWORD: vrp_password
+      POSTGRES_DB: vrp_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vrp_user"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend
+    command: osrm-routed --algorithm mld /data/philippines-latest.osrm --port 5000
+    volumes:
+      - ./vroom_ors/osrm-philippines:/data
+    ports:
+      - "5002:5000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:5000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  vroom:
+    image: ghcr.io/vroom-project/vroom-docker:v1.14.0
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./vroom_ors/vroom-conf:/conf
+    depends_on:
+      - osrm
+
+  api:
+    build: .
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    volumes:
+      - .:/app
+    ports:
+      - "8001:8000"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://vrp_user:vrp_password@db:5432/vrp_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - VROOM_URL=http://vroom:3000
+      - OSRM_URL=http://osrm:5000
+
+  celery_worker:
+    build: .
+    command: celery -A app.celery_worker worker --loglevel=info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      - DATABASE_URL=postgresql://vrp_user:vrp_password@db:5432/vrp_db
+      - REDIS_URL=redis://redis:6379/0
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - VROOM_URL=http://vroom:3000
+      - OSRM_URL=http://osrm:5000
+
+volumes:
+  postgres_data:

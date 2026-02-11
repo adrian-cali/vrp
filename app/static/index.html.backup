@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VRP Management System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+        .pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: .5; }
+        }
+        .badge {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .badge-queued { background: #fef3c7; color: #92400e; }
+        .badge-running { background: #dbeafe; color: #1e40af; }
+        .badge-ready { background: #d1fae5; color: #065f46; }
+        .badge-finalized { background: #e0e7ff; color: #3730a3; }
+        .badge-failed { background: #fee2e2; color: #991b1b; }
+        #map {
+            height: 600px;
+            width: 100%;
+            border-radius: 0.5rem;
+        }
+        .leaflet-popup-content {
+            margin: 8px 12px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <div class="gradient-bg text-white shadow-lg">
+        <div class="container mx-auto px-6 py-6">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h1 class="text-3xl font-bold flex items-center gap-3">
+                        <i class="fas fa-route"></i>
+                        VRP Management System
+                    </h1>
+                    <p class="text-white/80 mt-1">Vehicle Route Planning & Optimization</p>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm text-white/80">Logged in as</div>
+                    <div class="font-semibold" id="currentUserName">Requestor</div>
+                    <div class="text-xs text-white/60 mt-1" id="currentUserId"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container -->
+    <div class="container mx-auto px-6 py-8">
+        <!-- Tabs -->
+        <div class="bg-white rounded-lg shadow-md mb-6">
+            <div class="flex border-b">
+                <button class="tab-btn px-6 py-4 font-semibold text-gray-600 hover:text-purple-600 border-b-2 border-transparent" onclick="showTab('map')">
+                    <i class="fas fa-map mr-2"></i>Map View
+                </button>
+                <button class="tab-btn active px-6 py-4 font-semibold text-purple-600 border-b-2 border-purple-600" onclick="showTab('jobs')">
+                    <i class="fas fa-tasks mr-2"></i>VRP Jobs
+                </button>
+                <button class="tab-btn px-6 py-4 font-semibold text-gray-600 hover:text-purple-600 border-b-2 border-transparent" onclick="showTab('create')">
+                    <i class="fas fa-plus-circle mr-2"></i>Create Job
+                </button>
+                <button class="tab-btn px-6 py-4 font-semibold text-gray-600 hover:text-purple-600 border-b-2 border-transparent" onclick="showTab('fm')">
+                    <i class="fas fa-map-marker-alt mr-2"></i>FM Location
+                </button>
+            </div>
+        </div>
+
+        <!-- Jobs Tab -->
+        <div id="tab-jobs" class="tab-content">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">
+                        <i class="fas fa-list mr-2 text-purple-600"></i>Your VRP Jobs
+                    </h2>
+                    <button onclick="loadJobs()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                        <i class="fas fa-sync-alt mr-2"></i>Refresh
+                    </button>
+                </div>
+                
+                <div id="jobsList" class="space-y-4">
+                    <div class="text-center text-gray-500 py-8">
+                        <i class="fas fa-spinner fa-spin text-4xl mb-4"></i>
+                        <p>Loading jobs...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Job Tab -->
+        <div id="tab-create" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">
+                    <i class="fas fa-plus-circle mr-2 text-purple-600"></i>Create New VRP Job
+                </h2>
+                
+                <form id="createJobForm" class="space-y-6">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Maximum Tasks
+                            </label>
+                            <input type="number" id="maxTasks" value="100" min="1" max="10000"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                            <p class="text-xs text-gray-500 mt-1">Max: 10,000 tasks</p>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Strategy
+                            </label>
+                            <select id="strategy"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                                <option value="manual_area">Manual Area</option>
+                                <option value="auto">Auto</option>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Priority Min (1 = Highest)
+                            </label>
+                            <input type="number" id="priorityMin" value="1" min="1" max="100"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Priority Max (100 = Lowest)
+                            </label>
+                            <input type="number" id="priorityMax" value="100" min="1" max="100"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                        </div>
+
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                H3 Resolution (Optional)
+                            </label>
+                            <input type="number" id="h3Resolution" value="8" min="0" max="15"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                            <p class="text-xs text-gray-500 mt-1">Clustering resolution (7-10 recommended)</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex gap-4">
+                        <button type="submit"
+                            class="flex-1 bg-gradient-to-r from-purple-600 to-purple-700 text-white px-6 py-3 rounded-lg font-semibold hover:from-purple-700 hover:to-purple-800 transition shadow-lg">
+                            <i class="fas fa-rocket mr-2"></i>Create VRP Job
+                        </button>
+                        <button type="reset"
+                            class="px-6 py-3 border border-gray-300 rounded-lg font-semibold hover:bg-gray-50 transition">
+                            <i class="fas fa-undo mr-2"></i>Reset
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="createJobResult" class="mt-6 hidden"></div>
+            </div>
+        </div>
+
+        <!-- FM Location Tab -->
+        <div id="tab-fm" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h2 class="text-2xl font-bold text-gray-800 mb-6">
+                    <i class="fas fa-map-marker-alt mr-2 text-purple-600"></i>Update Field Man Location
+                </h2>
+                
+                <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+                    <div class="flex items-start gap-3">
+                        <i class="fas fa-info-circle text-blue-600 text-xl mt-1"></i>
+                        <div>
+                            <h3 class="font-semibold text-blue-900 mb-1">Current Location Caching</h3>
+                            <p class="text-sm text-blue-800">
+                                Update the current location of a field man. This location will be used as the starting point
+                                for route planning instead of their home location. Cached for 10 minutes.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <form id="updateLocationForm" class="space-y-6">
+                    <div>
+                        <label class="block text-sm font-semibold text-gray-700 mb-2">
+                            Field Man User ID
+                        </label>
+                        <input type="text" id="fmUserId" placeholder="Enter FM User ID"
+                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                        <p class="text-xs text-gray-500 mt-1">Default FM ID: 3372aaa5-3c76-4443-8d94-0dc70ef98f0b</p>
+                    </div>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Latitude
+                            </label>
+                            <input type="number" id="latitude" value="14.5995" step="0.0001" min="-90" max="90"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-sm font-semibold text-gray-700 mb-2">
+                                Longitude
+                            </label>
+                            <input type="number" id="longitude" value="120.9842" step="0.0001" min="-180" max="180"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600 focus:border-transparent">
+
+        <!-- Map View Tab -->
+        <div id="tab-map" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <div class="flex justify-between items-center mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800">
+                        <i class="fas fa-map mr-2 text-purple-600"></i>Map Visualization
+                    </h2>
+                    <div class="flex gap-4">
+                        <select id="mapDataType" onchange="updateMap()" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-600">
+                            <option value="tasks">All Tasks</option>
+                            <option value="fms">All Field Men</option>
+                            <option value="both">Tasks & FMs</option>
+                        </select>
+                        <button onclick="updateMap()" class="bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 transition">
+                            <i class="fas fa-sync-alt mr-2"></i>Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mb-4">
+                    <div class="bg-gradient-to-r from-blue-50 to-purple-50 border border-purple-200 rounded-lg p-4">
+                        <div class="flex items-center gap-4 flex-wrap text-sm">
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow"></div>
+                                <span class="font-semibold">High Priority</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 bg-yellow-500 rounded-full border-2 border-white shadow"></div>
+                                <span class="font-semibold">Medium Priority</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+           Map instance
+        let map = null;
+        let markersLayer = null;
+
+        // Initialize
+        document.getElementById('currentUserId').textContent = REQUESTOR_ID;
+        document.getElementById('fmUserId').value = FM_ID;
+
+        // Initialize map
+        function initMap() {
+            if (!map) {
+                // NCR (Metro Manila) center
+                map = L.map('map').setView([14.5995, 120.9842], 11);
+                
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+                    maxZoom: 19
+                }).addTo(map);
+              else if (tabName === 'map') {
+                setTimeout(() => {
+                    initMap();
+                    map.invalidateSize();
+                    updateMap();
+                }, 100);
+            }   
+                markersLayer = L.layerGroup().addTo(map);
+            }
+        }
+
+        // Update map with data
+        async function updateMap() {
+            initMap();
+            markersLayer.clearLayers();
+            
+            const dataType = document.getElementById('mapDataType').value;
+            const statsContainer = document.getElementById('mapStats');
+            statsContainer.innerHTML = '<div class="col-span-4 text-center text-gray-500"><i class="fas fa-spinner fa-spin mr-2"></i>Loading data...</div>';
+            
+            try {
+                let stats = {
+                    totalTasks: 0,
+                    highPriority: 0,
+                    mediumPriority: 0,
+                    lowPriority: 0,
+                    totalFMs: 0
+                };
+
+                // Fetch and display tasks
+                if (dataType === 'tasks' || dataType === 'both') {
+                    const response = await fetch(`${API_BASE}/../tasks?limit=1000`, {
+                        headers: { 'X-User-Id': REQUESTOR_ID }
+                    }).catch(() => null);
+                    
+                    if (response && response.ok) {
+                        const tasks = await response.json();
+                        
+                        tasks.forEach(task => {
+                            if (task.latitude && task.longitude) {
+                                const priority = task.priority;
+                                let color = 'green';
+                                let priorityLevel = 'Low';
+                                
+                                if (priority <= 33) {
+                                    color = 'red';
+                                    priorityLevel = 'High';
+                                    stats.highPriority++;
+                                } else if (priority <= 66) {
+                                    color = 'orange';
+                                    priorityLevel = 'Medium';
+                                    stats.mediumPriority++;
+                                } else {
+                                    stats.lowPriority++;
+                                }
+                                
+                                const marker = L.circleMarker([task.latitude, task.longitude], {
+                                    radius: 6,
+                                    fillColor: color,
+                                    color: '#fff',
+                                    weight: 2,
+                                    opacity: 1,
+                                    fillOpacity: 0.7
+                                });
+                                
+                                marker.bindPopup(`
+                                    <div class="text-sm">
+                                        <div class="font-bold text-gray-800 mb-2">Task</div>
+                                        <div class="text-xs">
+                                            <div><strong>Address:</strong> ${task.address}</div>
+                                            <div><strong>Priority:</strong> ${priority.toFixed(1)} (${priorityLevel})</div>
+                                            <div><strong>Status:</strong> ${task.status}</div>
+                                        </div>
+                                    </div>
+                                `);
+                                
+                                marker.addTo(markersLayer);
+                                stats.totalTasks++;
+                            }
+                        });
+                    }
+                }
+
+                // Fetch and display FMs
+                if (dataType === 'fms' || dataType === 'both') {
+                    const response = await fetch(`${API_BASE}/../fm_home_locations?limit=1000`, {
+                        headers: { 'X-User-Id': REQUESTOR_ID }
+                    }).catch(() => null);
+                    
+                    if (response && response.ok) {
+                        const fms = await response.json();
+                        
+                        fms.forEach(fm => {
+                            if (fm.home_lat && fm.home_long) {
+                                const marker = L.marker([fm.home_lat, fm.home_long], {
+                                    icon: L.divIcon({
+                                        className: 'custom-div-icon',
+                                        html: `
+                                            <div style="
+                                                background: #3b82f6;
+                                                width: 24px;
+                                                height: 24px;
+                                                border-radius: 50%;
+                                                border: 3px solid white;
+                                                box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                                                display: flex;
+                                                align-items: center;
+                                                justify-content: center;
+                                            ">
+                                                <i class="fas fa-user" style="color: white; font-size: 10px;"></i>
+                                            </div>
+                                        `,
+                                        iconSize: [24, 24],
+                                        iconAnchor: [12, 12]
+                                    })
+                                });
+                                
+                                marker.bindPopup(`
+                                    <div class="text-sm">
+                                        <div class="font-bold text-gray-800 mb-2">Field Man</div>
+                                        <div class="text-xs">
+                                            <div><strong>Home Address:</strong> ${fm.address || 'N/A'}</div>
+                                            <div><strong>Coordinates:</strong> ${fm.home_lat.toFixed(4)}, ${fm.home_long.toFixed(4)}</div>
+                                        </div>
+                                    </div>
+                                `);
+                                
+                                marker.addTo(markersLayer);
+                                stats.totalFMs++;
+                            }
+                        });
+                    }
+                }
+
+                // Update stats
+                statsContainer.innerHTML = `
+                    <div class="bg-gradient-to-br from-purple-50 to-purple-100 p-4 rounded-lg border border-purple-200">
+                        <div class="text-sm text-purple-600 font-semibold mb-1">Total Markers</div>
+                        <div class="text-2xl font-bold text-purple-900">${stats.totalTasks + stats.totalFMs}</div>
+                    </div>
+                    ${dataType !== 'fms' ? `
+                    <div class="bg-gradient-to-br from-red-50 to-red-100 p-4 rounded-lg border border-red-200">
+                        <div class="text-sm text-red-600 font-semibold mb-1">High Priority</div>
+                        <div class="text-2xl font-bold text-red-900">${stats.highPriority}</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-lg border border-yellow-200">
+                        <div class="text-sm text-yellow-600 font-semibold mb-1">Medium Priority</div>
+                        <div class="text-2xl font-bold text-yellow-900">${stats.mediumPriority}</div>
+                    </div>
+                    <div class="bg-gradient-to-br from-green-50 to-green-100 p-4 rounded-lg border border-green-200">
+                        <div class="text-sm text-green-600 font-semibold mb-1">Low Priority</div>
+                        <div class="text-2xl font-bold text-green-900">${stats.lowPriority}</div>
+                    </div>
+                    ` : `
+                    <div class="bg-gradient-to-br from-blue-50 to-blue-100 p-4 rounded-lg border border-blue-200 col-span-3">
+                        <div class="text-sm text-blue-600 font-semibold mb-1">Field Men Locations</div>
+                        <div class="text-2xl font-bold text-blue-900">${stats.totalFMs}</div>
+                    </div>
+                    `}
+                `;
+
+                // Fit map to markers
+                if (markersLayer.getLayers().length > 0) {
+                    map.fitBounds(markersLayer.getBounds(), { padding: [50, 50] });
+                }
+
+            } catch (error) {
+                statsContainer.innerHTML = `
+                    <div class="col-span-4 bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+                            <div class="flex items-center gap-2">
+                                <div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow"></div>
+                                <span class="font-semibold">Field Men</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="map" class="shadow-lg"></div>
+                
+                <div id="mapStats" class="mt-4 grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <!-- Stats will be populated dynamically -->
+                </div>
+            </div>
+        </div>
+                        </div>
+                    </div>
+                    
+                    <button type="submit"
+                        class="w-full bg-gradient-to-r from-green-600 to-green-700 text-white px-6 py-3 rounded-lg font-semibold hover:from-green-700 hover:to-green-800 transition shadow-lg">
+                        <i class="fas fa-map-pin mr-2"></i>Update Location
+                    </button>
+                </form>
+                
+                <div id="updateLocationResult" class="mt-6 hidden"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Job Details Modal -->
+    <div id="jobModal" class="fixed inset-0 bg-black bg-opacity-50 hidden items-center justify-center z-50" onclick="closeModal(event)">
+        <div class="bg-white rounded-lg shadow-2xl max-w-4xl w-full mx-4 max-h-[90vh] overflow-hidden" onclick="event.stopPropagation()">
+            <div class="gradient-bg text-white p-6 flex justify-between items-center">
+                <h3 class="text-2xl font-bold">
+                    <i class="fas fa-info-circle mr-2"></i>Job Details
+                </h3>
+                <button onclick="closeModal()" class="text-white hover:text-gray-200">
+                    <i class="fas fa-times text-2xl"></i>
+                </button>
+            </div>
+            <div id="jobModalContent" class="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
+                <!-- Content loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8001/api/v1';
+        const REQUESTOR_ID = '24e7d141-6d7c-4e9b-992e-89c944f92ad6';
+        const FM_ID = '3372aaa5-3c76-4443-8d94-0dc70ef98f0b';
+
+        // Initialize
+        document.getElementById('currentUserId').textContent = REQUESTOR_ID;
+        document.getElementById('fmUserId').value = FM_ID;
+
+        // Tab switching
+        function showTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(tab => tab.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active', 'text-purple-600', 'border-purple-600');
+                btn.classList.add('text-gray-600', 'border-transparent');
+            });
+            
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden');
+            event.target.closest('.tab-btn').classList.add('active', 'text-purple-600', 'border-purple-600');
+            event.target.closest('.tab-btn').classList.remove('text-gray-600', 'border-transparent');
+
+            if (tabName === 'jobs') {
+                loadJobs();
+            }
+        }
+
+        // Load jobs
+        async function loadJobs() {
+            const container = document.getElementById('jobsList');
+            container.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-spinner fa-spin text-4xl mb-4"></i><p>Loading jobs...</p></div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/vrp/jobs?page=1&page_size=50`, {
+                    headers: { 'X-User-Id': REQUESTOR_ID }
+                });
+                
+                const data = await response.json();
+                
+                if (data.jobs && data.jobs.length > 0) {
+                    container.innerHTML = data.jobs.map(job => `
+                        <div class="card bg-white border border-gray-200 rounded-lg p-6 cursor-pointer" onclick="viewJob('${job.id}')">
+                            <div class="flex justify-between items-start mb-4">
+                                <div>
+                                    <h3 class="text-xl font-bold text-gray-800 mb-2">${job.id}</h3>
+                                    <span class="badge badge-${job.status}">${job.status}</span>
+                                </div>
+                                <div class="text-right text-sm text-gray-500">
+                                    <div>${new Date(job.created_at).toLocaleString()}</div>
+                                </div>
+                            </div>
+                            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                                <div>
+                                    <div class="text-gray-500">Max Tasks</div>
+                                    <div class="font-semibold">${job.params.max_tasks || 'N/A'}</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-500">Priority Range</div>
+                                    <div class="font-semibold">${job.params.priority_min}-${job.params.priority_max}</div>
+                                </div>
+                                <div>
+                                    <div class="text-gray-500">Strategy</div>
+                                    <div class="font-semibold">${job.params.strategy || 'auto'}</div>
+                                </div>
+                                <div class="text-right">
+                                    ${job.status === 'ready_to_preview' ? 
+                                        `<button onclick="event.stopPropagation(); openPreview('${job.id}')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                                            <i class="fas fa-eye mr-2"></i>Preview
+                                        </button>` : 
+                                        job.status === 'failed' ? 
+                                        `<span class="text-red-600"><i class="fas fa-exclamation-circle mr-2"></i>Failed</span>` : 
+                                        `<span class="pulse text-blue-600"><i class="fas fa-spinner fa-spin mr-2"></i>Processing</span>`
+                                    }
+                                </div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    container.innerHTML = `
+                        <div class="text-center text-gray-500 py-12">
+                            <i class="fas fa-inbox text-6xl mb-4"></i>
+                            <p class="text-xl">No jobs yet</p>
+                            <p class="text-sm mt-2">Create your first VRP job to get started</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                container.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-red-800">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Create job
+        document.getElementById('createJobForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const result = document.getElementById('createJobResult');
+            result.innerHTML = '<div class="text-center text-blue-600"><i class="fas fa-spinner fa-spin mr-2"></i>Creating job...</div>';
+            result.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE}/vrp/jobs`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': REQUESTOR_ID
+                    },
+                    body: JSON.stringify({
+                        strategy: document.getElementById('strategy').value,
+                        max_tasks: parseInt(document.getElementById('maxTasks').value),
+                        priority_min: parseFloat(document.getElementById('priorityMin').value),
+                        priority_max: parseFloat(document.getElementById('priorityMax').value),
+                        h3_resolution: parseInt(document.getElementById('h3Resolution').value)
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = `
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-6">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-check-circle text-green-600 text-2xl"></i>
+                                <div class="flex-1">
+                                    <h3 class="font-semibold text-green-900 mb-2">Job Created Successfully!</h3>
+                                    <p class="text-sm text-green-800 mb-3">
+                                        Job ID: <code class="bg-white px-2 py-1 rounded">${data.job_id}</code>
+                                    </p>
+                                    <p class="text-sm text-green-800 mb-3">Status: <strong>${data.status}</strong></p>
+                                    <button onclick="showTab('jobs')" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition">
+                                        <i class="fas fa-list mr-2"></i>View All Jobs
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    e.target.reset();
+                } else {
+                    throw new Error(data.detail || 'Failed to create job');
+                }
+            } catch (error) {
+                result.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        });
+
+        // Update FM location
+        document.getElementById('updateLocationForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const result = document.getElementById('updateLocationResult');
+            result.innerHTML = '<div class="text-center text-blue-600"><i class="fas fa-spinner fa-spin mr-2"></i>Updating location...</div>';
+            result.classList.remove('hidden');
+
+            try {
+                const fmUserId = document.getElementById('fmUserId').value || FM_ID;
+                const response = await fetch(`${API_BASE}/fm/location`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-User-Id': fmUserId
+                    },
+                    body: JSON.stringify({
+                        current_lat: parseFloat(document.getElementById('latitude').value),
+                        current_long: parseFloat(document.getElementById('longitude').value)
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    result.innerHTML = `
+                        <div class="bg-green-50 border border-green-200 rounded-lg p-6">
+                            <div class="flex items-start gap-3">
+                                <i class="fas fa-check-circle text-green-600 text-2xl"></i>
+                                <div>
+                                    <h3 class="font-semibold text-green-900 mb-2">Location Updated!</h3>
+                                    <p class="text-sm text-green-800">
+                                        Latitude: <strong>${data.lat}</strong>, Longitude: <strong>${data.long}</strong>
+                                    </p>
+                                    <p class="text-xs text-green-700 mt-2">
+                                        <i class="fas fa-clock mr-1"></i>Cached for 10 minutes
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    throw new Error(data.detail || 'Failed to update location');
+                }
+            } catch (error) {
+                result.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-4 text-red-800">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        });
+
+        // View job details
+        async function viewJob(jobId) {
+            const modal = document.getElementById('jobModal');
+            const content = document.getElementById('jobModalContent');
+            
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            content.innerHTML = '<div class="text-center text-gray-500 py-8"><i class="fas fa-spinner fa-spin text-4xl mb-4"></i><p>Loading...</p></div>';
+
+            try {
+                const response = await fetch(`${API_BASE}/vrp/jobs/${jobId}`, {
+                    headers: { 'X-User-Id': REQUESTOR_ID }
+                });
+                
+                const job = await response.json();
+                
+                content.innerHTML = `
+                    <div class="space-y-6">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <div class="text-sm text-gray-500 mb-1">Job ID</div>
+                                <div class="font-mono text-sm bg-gray-100 p-2 rounded">${job.id}</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500 mb-1">Status</div>
+                                <span class="badge badge-${job.status}">${job.status}</span>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500 mb-1">Created At</div>
+                                <div class="text-sm">${new Date(job.created_at).toLocaleString()}</div>
+                            </div>
+                            <div>
+                                <div class="text-sm text-gray-500 mb-1">Updated At</div>
+                                <div class="text-sm">${new Date(job.updated_at).toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Parameters</h4>
+                            <pre class="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">${JSON.stringify(job.params, null, 2)}</pre>
+                        </div>
+
+                        ${job.result ? `
+                        <div>
+                            <h4 class="font-semibold text-gray-800 mb-2">Results</h4>
+                            <pre class="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">${JSON.stringify(job.result.summary, null, 2)}</pre>
+                        </div>
+                        ` : ''}
+
+                        ${job.error ? `
+                        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                            <h4 class="font-semibold text-red-900 mb-2">Error</h4>
+                            <p class="text-sm text-red-800">${job.error}</p>
+                        </div>
+                        ` : ''}
+
+                        <div class="flex gap-4">
+                            ${job.status === 'ready_to_preview' ? `
+                            <button onclick="openPreview('${job.id}')" class="flex-1 bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition font-semibold">
+                                <i class="fas fa-eye mr-2"></i>Preview Assignments
+                            </button>
+                            <button onclick="finalizeJob('${job.id}')" class="flex-1 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold">
+                                <i class="fas fa-check mr-2"></i>Finalize
+                            </button>
+                            ` : job.status === 'finalized' ? `
+                            <div class="flex-1 bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                                <i class="fas fa-check-circle text-blue-600 mr-2"></i>
+                                <span class="text-blue-800 font-semibold">Job Finalized</span>
+                            </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                content.innerHTML = `
+                    <div class="bg-red-50 border border-red-200 rounded-lg p-6 text-red-800">
+                        <i class="fas fa-exclamation-triangle mr-2"></i>
+                        <strong>Error:</strong> ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        // Open preview
+        function openPreview(jobId) {
+            window.open(`${API_BASE}/vrp/jobs/${jobId}/preview`, '_blank');
+        }
+
+        // Finalize job
+        async function finalizeJob(jobId) {
+            if (!confirm('Are you sure you want to finalize this job? This action cannot be undone.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/vrp/jobs/${jobId}/finalize`, {
+                    method: 'POST',
+                    headers: { 'X-User-Id': REQUESTOR_ID }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    alert('Job finalized successfully!');
+                    closeModal();
+                    loadJobs();
+                } else {
+                    throw new Error(data.detail || 'Failed to finalize job');
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            }
+        }
+
+        // Close modal
+        function closeModal(event) {
+            if (!event || event.target.id === 'jobModal') {
+                document.getElementById('jobModal').classList.add('hidden');
+                document.getElementById('jobModal').classList.remove('flex');
+            }
+        }
+
+        // Load jobs on start
+        loadJobs();
+        
+        // Auto-refresh jobs every 10 seconds
+        setInterval(() => {
+            if (!document.getElementById('tab-jobs').classList.contains('hidden')) {
+                loadJobs();
+            }
+        }, 10000);
+    </script>
+</body>
+</html>

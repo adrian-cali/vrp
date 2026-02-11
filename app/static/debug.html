@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Preview Debug</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 600px; width: 100%; }
+        body { margin: 20px; font-family: Arial, sans-serif; }
+        #debug { background: #f5f5f5; padding: 10px; margin-bottom: 20px; }
+        pre { background: white; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>Preview Map Debug</h1>
+    <div id="debug">
+        <h3>Debug Info:</h3>
+        <div id="debug-output"></div>
+    </div>
+    <div id="map"></div>
+    
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const debugLog = (msg) => {
+            console.log(msg);
+            document.getElementById('debug-output').innerHTML += `<p>${msg}</p>`;
+        };
+        
+        // Test job ID
+        const jobId = 'e570fe3d-6abb-4aa8-b7ec-ed41807bcb3d';
+        
+        // Initialize simple map
+        debugLog('Initializing map...');
+        const map = L.map('map').setView([12.8797, 121.7740], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        async function testPreviewData() {
+            try {
+                // Test FM locations
+                debugLog('Fetching FM locations...');
+                const fmResp = await fetch('/fm_home_locations?limit=10');
+                const fmData = await fmResp.json();
+                debugLog(`✅ Got ${fmData.length} FM locations`);
+                
+                // Add FM markers
+                fmData.forEach(fm => {
+                    L.circleMarker([fm.home_lat, fm.home_long], {
+                        radius: 8,
+                        fillColor: 'blue',
+                        color: 'white',
+                        weight: 2,
+                        fillOpacity: 1
+                    }).addTo(map).bindPopup(`FM: ${fm.user_id.substring(0, 8)}`);
+                });
+                debugLog(`✅ Added ${fmData.length} FM markers`);
+                
+                // Test tasks
+                debugLog('Fetching tasks...');
+                const tasksResp = await fetch('/tasks?limit=100');
+                const tasks = await tasksResp.json();
+                debugLog(`✅ Got ${tasks.length} tasks`);
+                
+                // Add task markers
+                tasks.slice(0, 50).forEach((task, i) => {
+                    L.circleMarker([task.latitude, task.longitude], {
+                        radius: 4,
+                        fillColor: 'red',
+                        color: 'white',
+                        weight: 1,
+                        fillOpacity: 0.7
+                    }).addTo(map).bindPopup(`Task ${i+1}: ${task.id.substring(0, 8)}`);
+                });
+                debugLog(`✅ Added 50 task markers`);
+                
+                // Fetch job preview data via API
+                debugLog(`Fetching preview endpoint for job ${jobId}...`);
+                const previewResp = await fetch(`/api/v1/vrp/jobs/${jobId}/assignments`);
+                
+                if (!previewResp.ok) {
+                    debugLog(`❌ Preview endpoint returned ${previewResp.status}`);
+                    return;
+                }
+                
+                const assignments = await previewResp.json();
+                debugLog(`✅ Got ${assignments.length} assignments`);
+                debugLog(`Sample assignment: ${JSON.stringify(assignments[0], null, 2)}`);
+                
+            } catch (err) {
+                debugLog(`❌ Error: ${err.message}`);
+                console.error(err);
+            }
+        }
+        
+        testPreviewData();
+    </script>
+</body>
+</html>
